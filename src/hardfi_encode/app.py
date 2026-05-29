@@ -51,6 +51,8 @@ class HardfiEncoderApp:
         self._start_time: float | None = None
         self._albums: dict[str, list] = {}
         self._album_filter: set[str] | None = None
+        self.source_type_var = tk.StringVar(value="lossless")
+        self.source_type_label: ttk.Label | None = None
 
         self._build_ui()
 
@@ -128,8 +130,22 @@ class HardfiEncoderApp:
         self.options_frame.columnconfigure(0, weight=1)
         self.options_frame.columnconfigure(1, weight=1)
 
+        source_frame = ttk.Frame(self.options_frame)
+        source_frame.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        ttk.Label(source_frame, text="Convert from:").grid(row=0, column=0, padx=(0, 10), sticky="w")
+        self.source_type_var = tk.StringVar(value="lossless")
+        self.lossless_rb = ttk.Radiobutton(source_frame, text="Lossless (WAV, FLAC, ALAC)", variable=self.source_type_var, value="lossless", command=self._on_source_change)
+        self.aac_rb = ttk.Radiobutton(source_frame, text="AAC", variable=self.source_type_var, value="aac", command=self._on_source_change)
+        self.all_rb = ttk.Radiobutton(source_frame, text="All", variable=self.source_type_var, value="all", command=self._on_source_change)
+        self.lossless_rb.grid(row=0, column=1, padx=(0, 5))
+        self.aac_rb.grid(row=0, column=2, padx=(0, 5))
+        self.all_rb.grid(row=0, column=3)
+
+        self.source_type_label = ttk.Label(source_frame, text="")
+        self.source_type_label.grid(row=0, column=4, padx=(20, 0), sticky="w")
+
         self.convert_frame = ttk.Frame(self.options_frame)
-        self.convert_frame.grid(row=0, column=0, columnspan=2, sticky="w")
+        self.convert_frame.grid(row=1, column=0, columnspan=2, sticky="w")
         self.convert_frame.columnconfigure(1, weight=1)
 
         ttk.Label(self.convert_frame, text="Target format:").grid(row=0, column=0, padx=(0, 10), sticky="w")
@@ -166,11 +182,11 @@ class HardfiEncoderApp:
 
         self._album_label_var = tk.StringVar(value="")
         self._album_label = ttk.Label(self.options_frame, textvariable=self._album_label_var)
-        self._album_label.grid(row=1, column=0, columnspan=2, pady=(0, 5))
+        self._album_label.grid(row=2, column=0, columnspan=2, pady=(0, 5))
         self._album_label.grid_remove()
 
         action_frame = ttk.Frame(self.options_frame)
-        action_frame.grid(row=2, column=0, columnspan=2, pady=(10, 0))
+        action_frame.grid(row=3, column=0, columnspan=2, pady=(10, 0))
 
         self.convert_btn = ttk.Button(
             action_frame, text="Start Conversion",
@@ -204,6 +220,43 @@ class HardfiEncoderApp:
         else:
             self.bitrate_label.grid_remove()
             self.bitrate_combo.grid_remove()
+
+    def _on_source_change(self) -> None:
+        if not self.scan_result:
+            return
+        source_type = self.source_type_var.get()
+        count = self._count_source_files(source_type)
+        if count > 0:
+            self.convert_btn.configure(state="normal")
+            if not self.target_var.get():
+                self.target_var.set("FLAC" if source_type == "lossless" else "MP3")
+        else:
+            self.convert_btn.configure(state="disabled")
+        self._update_source_count_label()
+
+    def _matches_source_type(self, codec: CodecType, source_type: str) -> bool:
+        if source_type == "aac":
+            return codec == CodecType.AAC
+        if source_type == "all":
+            return is_lossless(codec) or codec == CodecType.AAC
+        return is_lossless(codec)
+
+    def _count_source_files(self, source_type: str) -> int:
+        if not self.scan_result:
+            return 0
+        if source_type == "aac":
+            return len(self.scan_result.by_codec.get(CodecType.AAC, []))
+        if source_type == "all":
+            return sum(len(v) for k, v in self.scan_result.by_codec.items() if is_lossless(k) or k == CodecType.AAC)
+        return sum(len(v) for k, v in self.scan_result.by_codec.items() if is_lossless(k))
+
+    def _update_source_count_label(self) -> None:
+        if not self.scan_result or self.source_type_label is None:
+            return
+        source_type = self.source_type_var.get()
+        count = self._count_source_files(source_type)
+        labels = {"lossless": "lossless", "aac": "AAC", "all": "lossless + AAC"}
+        self.source_type_label.configure(text=f"Files matching: {count} ({labels.get(source_type, '')})")
 
     def _on_delete_toggle(self) -> None:
         if self.delete_var.get():
@@ -291,32 +344,41 @@ class HardfiEncoderApp:
             self.album_btn.configure(state="disabled")
             return
 
-        lossless_count = sum(len(v) for k, v in result.by_codec.items() if is_lossless(k))
-        if lossless_count == 0:
-            self.convert_btn.configure(state="disabled")
-            self.target_var.set("")
-            messagebox.showinfo(
-                "Nothing to Convert",
-                "No lossless files (WAV, FLAC, ALAC) found to convert.",
-            )
-            self._disable_options()
-            self.album_btn.configure(state="disabled")
-            return
-
         self._albums = self._get_albums(result.files)
         self._album_filter = None
         self._album_label.grid_remove()
 
+        lossless_count = sum(len(v) for k, v in result.by_codec.items() if is_lossless(k))
+        aac_count = len(result.by_codec.get(CodecType.AAC, []))
+
         self._enable_options()
+        self.source_type_var.set("lossless")
+        self._on_source_change()
         if self.target_dir:
             self.delete_var.set(False)
             self.delete_cb.configure(state="disabled")
         else:
             self.delete_cb.configure(state="normal")
-        self.target_var.set("FLAC")
-        self._on_target_change()
-        self.convert_btn.configure(state="normal")
-        self.album_btn.configure(state="normal")
+
+        if lossless_count > 0:
+            self.target_var.set("FLAC")
+            self._on_target_change()
+            self.convert_btn.configure(state="normal")
+            self.album_btn.configure(state="normal")
+        elif aac_count > 0:
+            self.target_var.set("MP3")
+            self._on_target_change()
+            self.convert_btn.configure(state="normal")
+            self.album_btn.configure(state="normal")
+        else:
+            self.convert_btn.configure(state="disabled")
+            self.album_btn.configure(state="disabled")
+            messagebox.showinfo(
+                "Nothing to Convert",
+                "No lossless or AAC files found to convert.",
+            )
+
+        self._update_source_count_label()
 
     def _get_albums(self, files) -> dict[str, list]:
         albums: dict[str, list] = {}
@@ -345,15 +407,16 @@ class HardfiEncoderApp:
         canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
 
+        source_type = self.source_type_var.get()
         vars: dict[str, tk.BooleanVar] = {}
         for album in sorted(self._albums):
             files = self._albums[album]
-            lossless = sum(1 for f in files if is_lossless(f.codec))
+            matching = sum(1 for f in files if self._matches_source_type(f.codec, source_type))
             codecs = ", ".join(sorted(set(f.codec.value for f in files)))
             var = tk.BooleanVar(value=True)
             vars[album] = var
             cb = ttk.Checkbutton(
-                scroll_frame, text=f"{album}  ({lossless} files\u2014{codecs})",
+                scroll_frame, text=f"{album}  ({matching} files matching\u2014{codecs})",
                 variable=var,
             )
             cb.pack(anchor="w", padx=10, pady=1)
@@ -375,9 +438,9 @@ class HardfiEncoderApp:
         def done(album_filter: set[str] | None):
             self._album_filter = album_filter
             if album_filter is not None:
-                total = sum(len(self._albums[a]) for a in album_filter)
-                lossless = sum(1 for a in album_filter for f in self._albums[a] if is_lossless(f.codec))
-                label = f"Albums selected: {len(album_filter)} ({lossless} lossless files)"
+                source_type = self.source_type_var.get()
+                matching = sum(1 for a in album_filter for f in self._albums[a] if self._matches_source_type(f.codec, source_type))
+                label = f"Albums selected: {len(album_filter)} ({matching} files matching)"
                 self._album_label_var.set(label)
                 self._album_label.grid()
             else:
@@ -394,11 +457,15 @@ class HardfiEncoderApp:
         for child in self.convert_frame.winfo_children():
             if isinstance(child, (ttk.Radiobutton, ttk.Checkbutton, ttk.Combobox, ttk.Label)):
                 child.configure(state="normal")
+        for rb in (self.lossless_rb, self.aac_rb, self.all_rb):
+            rb.configure(state="normal")
 
     def _disable_options(self) -> None:
         for child in self.convert_frame.winfo_children():
             if isinstance(child, (ttk.Radiobutton, ttk.Checkbutton, ttk.Combobox, ttk.Label)):
                 child.configure(state="disabled")
+        for rb in (self.lossless_rb, self.aac_rb, self.all_rb):
+            rb.configure(state="disabled")
 
     def _start_conversion(self) -> None:
         if self.converting or not self.scan_result:
@@ -418,6 +485,7 @@ class HardfiEncoderApp:
                 messagebox.showwarning("Invalid Bitrate", "Please select a valid bitrate.")
                 return
 
+        source_type = self.source_type_var.get()
         files = self.scan_result.files
         if self._album_filter is not None:
             files = [f for f in files if str(Path(f.relative_path).parent) in self._album_filter]
@@ -427,10 +495,17 @@ class HardfiEncoderApp:
             target_codec=target_codec,
             bitrate=bitrate,
             delete_originals=self.delete_var.get(),
+            source_type=source_type,
         )
 
         if not plan.files_to_convert:
-            messagebox.showinfo("Nothing to Convert", "All lossless files are already in the target format.")
+            if source_type == "lossless":
+                msg = "All lossless files are already in the target format."
+            elif source_type == "aac":
+                msg = "All AAC files are already in the target format."
+            else:
+                msg = "All convertible files are already in the target format."
+            messagebox.showinfo("Nothing to Convert", msg)
             return
 
         count = len(plan.files_to_convert)

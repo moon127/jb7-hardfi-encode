@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 CODEC_TO_FFMPEG = {
     CodecType.WAV: "pcm_s16le",
     CodecType.FLAC: "flac",
+    CodecType.ALAC: "alac",
     CodecType.AAC: "aac",
     CodecType.MP3: "libmp3lame",
 }
@@ -26,6 +27,7 @@ CODEC_TO_FFMPEG = {
 CODEC_TO_EXT = {
     CodecType.WAV: ".wav",
     CodecType.FLAC: ".flac",
+    CodecType.ALAC: ".m4a",
     CodecType.AAC: ".m4a",
     CodecType.MP3: ".mp3",
 }
@@ -142,8 +144,14 @@ def plan_conversion(
     target_codec: CodecType,
     bitrate: Optional[int] = None,
     delete_originals: bool = False,
+    source_type: str = "lossless",
 ) -> ConversionPlan:
-    files_to_convert = [f for f in files if is_lossless(f.codec) and f.codec != target_codec]
+    if source_type == "aac":
+        files_to_convert = [f for f in files if f.codec == CodecType.AAC and f.codec != target_codec]
+    elif source_type == "all":
+        files_to_convert = [f for f in files if (is_lossless(f.codec) or f.codec == CodecType.AAC) and f.codec != target_codec]
+    else:
+        files_to_convert = [f for f in files if is_lossless(f.codec) and f.codec != target_codec]
     return ConversionPlan(
         target_codec=target_codec,
         bitrate=bitrate,

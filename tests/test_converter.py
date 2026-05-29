@@ -24,12 +24,14 @@ class TestCodecMaps:
     def test_codec_to_ext(self):
         assert CODEC_TO_EXT[CodecType.WAV] == ".wav"
         assert CODEC_TO_EXT[CodecType.FLAC] == ".flac"
+        assert CODEC_TO_EXT[CodecType.ALAC] == ".m4a"
         assert CODEC_TO_EXT[CodecType.AAC] == ".m4a"
         assert CODEC_TO_EXT[CodecType.MP3] == ".mp3"
 
     def test_codec_to_ffmpeg(self):
         assert CODEC_TO_FFMPEG[CodecType.WAV] == "pcm_s16le"
         assert CODEC_TO_FFMPEG[CodecType.FLAC] == "flac"
+        assert CODEC_TO_FFMPEG[CodecType.ALAC] == "alac"
         assert CODEC_TO_FFMPEG[CodecType.AAC] == "aac"
         assert CODEC_TO_FFMPEG[CodecType.MP3] == "libmp3lame"
 
@@ -140,6 +142,72 @@ class TestPlanConversion:
         ]
         plan = plan_conversion(files, CodecType.MP3, bitrate=320000)
         assert plan.bitrate == 320000
+
+    def test_plan_source_type_aac_includes_aac(self):
+        files = [
+            AudioFile(
+                path="/m/a.aac", relative_path="a.m4a", codec=CodecType.AAC,
+                bitrate=256000, sample_rate=44100, channels=2,
+            ),
+        ]
+        plan = plan_conversion(files, CodecType.MP3, source_type="aac")
+        assert len(plan.files_to_convert) == 1
+
+    def test_plan_source_type_aac_skips_lossless(self):
+        files = [
+            AudioFile(
+                path="/m/a.wav", relative_path="a.wav", codec=CodecType.WAV,
+                bitrate=1411000, sample_rate=44100, channels=2,
+            ),
+        ]
+        plan = plan_conversion(files, CodecType.MP3, source_type="aac")
+        assert len(plan.files_to_convert) == 0
+
+    def test_plan_source_type_aac_skips_same_codec(self):
+        files = [
+            AudioFile(
+                path="/m/a.aac", relative_path="a.m4a", codec=CodecType.AAC,
+                bitrate=256000, sample_rate=44100, channels=2,
+            ),
+        ]
+        plan = plan_conversion(files, CodecType.AAC, source_type="aac")
+        assert len(plan.files_to_convert) == 0
+
+    def test_plan_source_type_all_includes_lossless_and_aac(self):
+        files = [
+            AudioFile(
+                path="/m/a.wav", relative_path="a.wav", codec=CodecType.WAV,
+                bitrate=1411000, sample_rate=44100, channels=2,
+            ),
+            AudioFile(
+                path="/m/b.flac", relative_path="b.flac", codec=CodecType.FLAC,
+                bitrate=500000, sample_rate=44100, channels=2,
+            ),
+            AudioFile(
+                path="/m/c.aac", relative_path="c.m4a", codec=CodecType.AAC,
+                bitrate=256000, sample_rate=44100, channels=2,
+            ),
+            AudioFile(
+                path="/m/d.mp3", relative_path="d.mp3", codec=CodecType.MP3,
+                bitrate=192000, sample_rate=44100, channels=2,
+            ),
+        ]
+        plan = plan_conversion(files, CodecType.FLAC, source_type="all")
+        assert len(plan.files_to_convert) == 2  # WAV and AAC but not MP3 or FLAC
+
+    def test_plan_source_type_default_is_lossless(self):
+        files = [
+            AudioFile(
+                path="/m/a.wav", relative_path="a.wav", codec=CodecType.WAV,
+                bitrate=1411000, sample_rate=44100, channels=2,
+            ),
+            AudioFile(
+                path="/m/b.aac", relative_path="b.m4a", codec=CodecType.AAC,
+                bitrate=256000, sample_rate=44100, channels=2,
+            ),
+        ]
+        plan = plan_conversion(files, CodecType.FLAC)
+        assert len(plan.files_to_convert) == 1  # only WAV, not AAC
 
 
 class TestConvertSingleFile:

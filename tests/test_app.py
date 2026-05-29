@@ -86,7 +86,13 @@ class MockLabelFrame(MockTtkWidget):
 @pytest.fixture
 def mock_tk(mocker):
     mocker.patch("hardfi_encode.app.tk.Tk", return_value=MagicMock())
-    mocker.patch("hardfi_encode.app.tk.StringVar", side_effect=lambda **kw: MagicMock())
+
+    def _stringvar(**kw):
+        m = MagicMock()
+        m.get = MagicMock(return_value=kw.get("value", ""))
+        return m
+
+    mocker.patch("hardfi_encode.app.tk.StringVar", side_effect=_stringvar)
     mocker.patch("hardfi_encode.app.tk.BooleanVar", side_effect=lambda **kw: MagicMock())
     mocker.patch("hardfi_encode.app.filedialog")
     mocker.patch("hardfi_encode.app.messagebox")
@@ -255,7 +261,7 @@ class TestScanComplete:
         )
         app._on_scan_complete(result)
         mock_msg.showinfo.assert_called_once()
-        assert "No lossless files" in mock_msg.showinfo.call_args[0][1]
+        assert "No lossless or AAC files" in mock_msg.showinfo.call_args[0][1]
 
 
 class TestTargetChange:
