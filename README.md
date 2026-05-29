@@ -2,7 +2,7 @@
 
 A cross-platform desktop tool for scanning and converting audio files from a Brennan JB7 media player's `hardfi` directory structure. Converts lossless formats (WAV, FLAC, ALAC) to more space-efficient formats.
 
-<img width="812" height="644" alt="Screenshot 2026-05-28 at 09 40 12" src="https://github.com/user-attachments/assets/f3524952-0ed3-4f29-be45-9676f5835364" />
+<img width="953" height="723" alt="Screenshot 2026-05-29 at 09 52 27" src="https://github.com/user-attachments/assets/26744f19-5849-4f5a-acfa-3bfd529a0ebf" />
 
 ## Features
 
